@@ -1,0 +1,15 @@
+Validation performed before packaging
+
+- Python source compilation: passed.
+- Unit tests: 8 passed using synthetic/deterministic data.
+- CLI help/import check: passed.
+- GitHub Actions workflow YAML: parsed successfully with a YAML parser.
+- Synthetic engine exercise: ran strategy state through a generated OHLC series and serialized state/summary successfully.
+
+Not performed:
+- No live or historical Yahoo Finance download was made in this environment.
+- No real-market backtest was run, so no profitability conclusion is available.
+- GitHub Actions workflows have not been executed in the user's repository.
+- No broker connection or real-money trading code is present.
+
+Before trusting any performance result, validate market-data quality and broker-specific spreads, slippage, commissions, financing/swap, order execution and risk behavior. Daily OHLC data cannot guarantee intraday drawdown limits.
