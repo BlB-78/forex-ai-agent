@@ -1,0 +1,48 @@
+name: Strategy learning experiments
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: 'Development start date (YYYY-MM-DD)'
+        required: true
+        default: '2008-01-01'
+      development_end:
+        description: 'Exclusive development cutoff (do not move past your locked test boundary)'
+        required: true
+        default: '2018-01-01'
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Run bounded candidate experiments
+        env:
+          START_DATE: ${{ inputs.start || '2008-01-01' }}
+          DEVELOPMENT_END: ${{ inputs.development_end || '2018-01-01' }}
+        run: >-
+          python -m forex_agent.cli learn
+          --start "$START_DATE"
+          --development-end "$DEVELOPMENT_END"
+          --output-dir reports/learning
+      - name: Upload candidate report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: forex-learning-experiments-${{ github.run_number }}
+          path: reports/learning/
+          if-no-files-found: warn
+          retention-days: 30

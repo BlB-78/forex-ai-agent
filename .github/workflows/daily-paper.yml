@@ -1,0 +1,90 @@
+name: Daily paper-trading cycle
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run after the typical New York Forex daily close. This is UTC and may be delayed by GitHub.
+    - cron: '55 23 * * 1-5'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forex-ai-agent-paper-trading
+  cancel-in-progress: false
+
+jobs:
+  paper-trading:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Restore persistent paper state from agent-state branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          if git fetch origin refs/heads/agent-state:refs/remotes/origin/agent-state; then
+            if git show origin/agent-state:state/paper_state.json > runtime/paper_state.json; then
+              echo "Restored persisted paper account state."
+            else
+              rm -f runtime/paper_state.json
+              echo "State branch exists but state file is missing; starting a fresh paper account."
+            fi
+          else
+            echo "No agent-state branch found; this is the first paper run."
+          fi
+      - name: Run the paper-trading simulator
+        run: >-
+          python -m forex_agent.cli paper
+          --state-path runtime/paper_state.json
+          --report-dir reports/paper
+      - name: Upload paper reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: forex-paper-report-${{ github.run_number }}
+          path: reports/paper/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Save paper account and journal to agent-state branch
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/forex-agent-state"
+          cp runtime/paper_state.json "$RUNNER_TEMP/forex-agent-state/paper_state.json"
+          cp reports/paper/paper_trades.csv "$RUNNER_TEMP/forex-agent-state/paper_trades.csv"
+          cp reports/paper/paper_equity.csv "$RUNNER_TEMP/forex-agent-state/paper_equity.csv"
+          cp reports/paper/paper_summary.json "$RUNNER_TEMP/forex-agent-state/paper_summary.json"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git show-ref --verify --quiet refs/remotes/origin/agent-state; then
+            git switch -C agent-state origin/agent-state
+            git clean -fdx
+          else
+            git switch --orphan agent-state
+            git clean -fdx
+          fi
+
+          mkdir -p state
+          cp "$RUNNER_TEMP/forex-agent-state/"* state/
+          git add state/
+          if git diff --cached --quiet; then
+            echo "Paper state has not changed; no commit is needed."
+          else
+            git commit -m "Update paper account state [skip ci]"
+            git push origin HEAD:refs/heads/agent-state
+          fi

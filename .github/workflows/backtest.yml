@@ -1,0 +1,50 @@
+name: Historical backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: 'In-sample start date (YYYY-MM-DD)'
+        required: true
+        default: '2008-01-01'
+      split_date:
+        description: 'Out-of-sample start date (YYYY-MM-DD)'
+        required: true
+        default: '2018-01-01'
+  schedule:
+    - cron: '0 04 1 * *' # Monthly at 04:00 UTC; GitHub scheduled runs can be delayed.
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Run in-sample and out-of-sample tests
+        env:
+          START_DATE: ${{ inputs.start || '2008-01-01' }}
+          SPLIT_DATE: ${{ inputs.split_date || '2018-01-01' }}
+        run: >-
+          python -m forex_agent.cli backtest
+          --start "$START_DATE"
+          --split-date "$SPLIT_DATE"
+          --output-dir reports/backtest
+      - name: Upload backtest reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: forex-backtest-${{ github.run_number }}
+          path: reports/backtest/
+          if-no-files-found: warn
+          retention-days: 30
